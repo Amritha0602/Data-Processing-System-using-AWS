@@ -1,0 +1,110 @@
+import json
+import boto3
+from datetime import datetime
+
+REGION = "us-east-1"
+
+dynamodb = boto3.resource("dynamodb", region_name=REGION)
+s3 = boto3.client("s3", region_name=REGION)
+sqs = boto3.client("sqs", region_name=REGION)
+sns = boto3.client("sns", region_name=REGION)
+
+TABLE_NAME = "StudentTable"
+BUCKET_NAME = "student-data-storage-123"
+QUEUE_URL = "https://sqs.us-east-1.amazonaws.com/153668968366/StudentDataQueue"
+SNS_TOPIC_ARN = "arn:aws:sns:us-east-1:153668968366:student-notification-topic"
+
+table = dynamodb.Table(TABLE_NAME)
+
+def cors_headers():
+    return {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+    }
+
+def lambda_handler(event, context):
+    try:
+        print("Event:", event)
+
+        # -------------------------
+        # HANDLE API GATEWAY BODY
+        # -------------------------
+        if "body" in event and event["body"]:
+            body = json.loads(event["body"])
+        else:
+            body = event
+
+        student_id = body.get("student_id")
+        student_name = body.get("student_name")
+
+        if not student_id or not student_name:
+            return {
+                "statusCode": 400,
+                "headers": cors_headers(),
+                "body": json.dumps("student_id and student_name are required")
+            }
+
+        timestamp = datetime.utcnow().isoformat()
+
+       
+        table.put_item(
+            Item={
+                "student_id": str(student_id),
+                "student_name": student_name,
+                "created_at": timestamp
+            }
+        )
+        print("✅ DynamoDB stored")
+
+        
+        s3.put_object(
+            Bucket=BUCKET_NAME,
+            Key=f"students/{student_id}.json",
+            Body=json.dumps({
+                "student_id": student_id,
+                "student_name": student_name,
+                "created_at": timestamp
+            }),
+            ContentType="application/json"
+        )
+        print("✅ S3 stored")
+
+      
+        sqs.send_message(
+            QueueUrl=QUEUE_URL,
+            MessageBody=json.dumps({
+                "student_id": student_id,
+                "student_name": student_name,
+                "created_at": timestamp
+            })
+        )
+        print("✅ SQS message sent")
+
+        
+        sns.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject="New Student Created",
+            Message=(
+                f"New student added:\n\n"
+                f"ID: {student_id}\n"
+                f"Name: {student_name}\n"
+                f"Time: {timestamp}"
+            )
+        )
+        print("✅ SNS notification sent")
+
+        
+        return {
+            "statusCode": 200,
+            "headers": cors_headers(),
+            "body": json.dumps("Student data stored in DynamoDB, S3, SQS and SNS successfully")
+        }
+
+    except Exception as e:
+        print("❌ ERROR:", str(e))
+        return {
+            "statusCode": 500,
+            "headers": cors_headers(),
+            "body": json.dumps(str(e))
+        }

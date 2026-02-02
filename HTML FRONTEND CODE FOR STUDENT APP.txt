@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Data App</title>
+</head>
+<body>
+    <h1>Student Data Form</h1>
+    <form id="studentForm">
+        <label>Student ID:</label>
+        <input type="text" id="student_id" required><br><br>
+
+        <label>Student Name:</label>
+        <input type="text" id="student_name" required><br><br>
+
+        <button type="submit">Submit</button>
+    </form>
+
+    <p id="response"></p>
+
+    <script>
+        const form = document.getElementById('studentForm');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const student_id = document.getElementById('student_id').value.trim();
+            const student_name = document.getElementById('student_name').value.trim();
+
+            if (!student_id || !student_name) {
+                alert("Both fields are required");
+                return;
+            }
+
+            try {
+                const res = await fetch('https://cbar7k67n3.execute-api.us-east-1.amazonaws.com/prod', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ student_id, student_name })
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById('response').innerText = "✅ Data stored successfully!";
+                    // Clear form
+                    document.getElementById('student_id').value = '';
+                    document.getElementById('student_name').value = '';
+                } else {
+                    document.getElementById('response').innerText = "❌ Error: " + data.message || JSON.stringify(data);
+                }
+
+            } catch (err) {
+                console.error("Error:", err);
+                document.getElementById('response').innerText = "❌ Network or server error. Check console.";
+            }
+        });
+    </script>
+</body>
+</html>
